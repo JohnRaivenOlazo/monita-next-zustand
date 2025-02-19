@@ -1,79 +1,129 @@
 import { create, StateCreator } from 'zustand';
+// import io from 'socket.io-client';
+// import { URL_API } from '../consts';
+import Router from 'next/router';
+
+import { Discussion } from './discussion';
+import { Post } from './post';
+import { createTeam } from './team';
 import { createUser, User } from './user';
-import { createPost, Post } from './post';
+import createProjects, { ProjectsState } from './projects';
+import createOrganization, { OrganizationSlice } from './organization';
+import createMonitoring, { MonitoringState } from './monitoring';
+import createUserSetting, { UserSettingState } from './usersetting';
+import createStripe, { StripeState } from './stripe';
 
 export interface StoreState {
-  users: User[];
-  posts: Post[];
+  isServer: boolean;
+  teams: ReturnType<typeof createTeam>[];
   currentUser: User | null;
+  currentTeam: ReturnType<typeof createTeam> | null;
+  organisation: OrganizationSlice;
+  currentUrl: string;
   isLoading: boolean;
-  
-  // User actions
-  addUser: (userData: Omit<User, "id">) => void;
-  removeUser: (id: string) => void;
-  setCurrentUser: (id: string) => void;
-  
-  // Post actions
-  addPost: (postData: { userId: string; content: string }) => void;
-  removePost: (id: string) => void;
-  editPost: (id: string, content: string) => void;
-  getUserPosts: (userId: string) => Post[];
+  socket: any;
+  projects: ProjectsState | null;
+  userSettings: UserSettingState;
+  monitoring: MonitoringState;
+  stripe: StripeState;
+  theme: 'light' | 'dark';
+  apiCount: number;
+
+  // Core methods
+  initStore: (initialState?: any) => void;
+  setCurrentUser: (user: User | null) => void;
+  setTeams: (teams: any[]) => void;
+  setCurrentTeam: (team: any) => void;
+  setLoading: (val?: boolean) => void;
+  changeCurrentUrl: (url: string) => void;
 }
 
-export type SetStoreState = {
-  (partial: StoreState | Partial<StoreState> | ((state: StoreState) => StoreState | Partial<StoreState>), replace?: false | undefined): void;
-  (state: StoreState | ((state: StoreState) => StoreState), replace: true): void;
-};
-
-export type GetStoreState = () => StoreState;
-
 const useStore = create<StoreState>((set, get) => ({
-  users: [],
-  posts: [],
+  isServer: typeof window === 'undefined',
+  teams: [],
   currentUser: null,
+  currentTeam: null,
+  organisation: createOrganization(set),
+  currentUrl: '',
   isLoading: false,
+  socket: null,
+  projects: null,
+  userSettings: createUserSetting({
+    set,
+    get,
+    initialised: false,
+  }),
+  monitoring: createMonitoring({ 
+    store: {
+      set,
+      get
+    }
+  }),
+  stripe: createStripe({
+    set,
+    get,
+    userBillingLimits: null,
+    plans: [],
+    userPlans: [],
+    invoices: [],
+  }),
+  theme: 'light',
+  apiCount: 0,
 
-  // User actions
-  addUser: (userData) => {
-    const user = createUser({ set, get, ...userData });
-    set((state) => ({ users: [...state.users, user] }));
+  initStore: (initialState = {}) => {
+    const isServer = typeof window === 'undefined';
+    let socket = null;
+
+    if (!isServer) {
+      
+    //   socket.on('connect', () => {
+        console.log('Connected to socket');
+        const currentTeam = get().currentTeam;
+    //   });
+    }
+
+    set({
+      isServer,
+      socket,
+      currentUrl: initialState.currentUrl || '',
+    });
   },
 
-  removeUser: (id) => {
-    set((state) => ({
-      users: state.users.filter((user) => user.id !== id),
-      posts: state.posts.filter((post) => post.userId !== id),
+  setCurrentUser: (user) => {
+    set({ currentUser: user ? createUser({ set, get, ...user }) : null });
+  },
+
+  setTeams: (teams) => {
+    const teamObjs = teams.map(t => createTeam({
+      set,
+      get,
+      ...t,
+      store: get()
     }));
+    set({ teams: teamObjs });
+
+    if (teams.length > 0 && !get().currentTeam) {
+      get().setCurrentTeam(teamObjs[0]);
+    }
   },
 
-  setCurrentUser: (id) => {
-    const user = get().users.find((u) => u.id === id);
-    set({ currentUser: user || null });
+  setCurrentTeam: (team) => {
+    set({ currentTeam: team });
+    if (team && get().socket) {
+      get().socket.emit('joinTeam', { teamId: team._id });
+    }
   },
 
-  // Post actions
-  addPost: ({ userId, content }) => {
-    const post = createPost({ set, get, userId, content });
-    set((state) => ({ posts: [...state.posts, post] }));
+  setLoading: (val = true) => {
+    const currentCount = get().apiCount;
+    const newCount = val ? currentCount + 1 : currentCount - 1;
+    set({ apiCount: newCount, isLoading: newCount > 0 });
   },
 
-  removePost: (id) => {
-    set((state) => ({
-      posts: state.posts.filter((post) => post.id !== id),
-    }));
-  },
-
-  editPost: (id, content) => {
-    set((state) => ({
-      posts: state.posts.map((post) =>
-        post.id === id ? { ...post, content, updatedAt: new Date() } : post
-      ),
-    }));
-  },
-
-  getUserPosts: (userId) => {
-    return get().posts.filter((post) => post.userId === userId);
-  },
+  changeCurrentUrl: (url) => {
+    set({ currentUrl: url });
+  }
 }));
 
+export const { getState, setState } = useStore;
 export default useStore;

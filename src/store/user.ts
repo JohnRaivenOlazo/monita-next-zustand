@@ -1,32 +1,61 @@
-import { nanoid } from 'nanoid';
-import { GetStoreState, SetStoreState } from './index.store';
-import { ReactNode } from 'react';
-
 export interface User {
-  username: string;
-  id: string;
+  _id: string;
   name: string;
   email: string;
-  createdAt: Date;
-  isActive: boolean;
+  avatarUrl?: string;
+  isAdmin?: boolean;
+  darkTheme?: boolean;
+  businessId?: string;
 }
 
-interface CreateUserParams {
-  set: SetStoreState;
-  get: GetStoreState;
-  username: string;
-  name: string;
-  email: string;
+export interface UserState {
+  user: User | null;
+  settings: {
+    theme: 'light' | 'dark';
+    timezone?: string;
+  };
 }
 
-export const createUser = ({ set, get, ...params }: CreateUserParams): User => {
-  const user: User = {
-    username: params.username,
-    id: nanoid(),
-    name: params.name,
-    email: params.email,
-    createdAt: new Date(),
-    isActive: true
+export const createUser = (props: any) => {
+  const user = {
+    _id: props._id || '',
+    name: props.name || '',
+    email: props.email || '',
+    avatarUrl: props.avatarUrl || '',
+    isAdmin: props.isAdmin || false,
+    darkTheme: props.darkTheme || false,
+    businessId: props.businessId || null,
+
+    // Simple methods for testing
+    updateProfile: async (data: Partial<User>) => {
+      if (props.set) {
+        props.set((state: any) => ({
+          users: state.users.map((u: User) => 
+            u._id === user._id ? { ...u, ...data } : u
+          )
+        }));
+      }
+    },
+
+    toggleTheme: async () => {
+      const newTheme = !user.darkTheme;
+      if (props.set) {
+        props.set((state: any) => ({
+          users: state.users.map((u: User) => 
+            u._id === user._id ? { ...u, darkTheme: newTheme } : u
+          )
+        }));
+      }
+      return newTheme;
+    },
+
+    getState: () => {
+      if (props.get) {
+        const state = props.get();
+        return state.users.find((u: User) => u._id === user._id);
+      }
+      return null;
+    }
   };
 
   return user;
